@@ -50,7 +50,7 @@ MEDIA_MOUNT="${MEDIA_BASE}/retromi-${DEVBASE}"
 
 create_readme() {
     local base="$1"
-    cat > "${base}/RetroMi-README.md" << 'EOF'
+    cat > "${base}/RetroMi-README.txt" << 'EOF'
 # RetroMi — USB ROMs Drive / Clé USB ROMs
 
 ---
