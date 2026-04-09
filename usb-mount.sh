@@ -216,17 +216,18 @@ do_mount() {
     fi
     ${log} "Mounted ${DEVICE} (${ID_FS_TYPE}) at ${MEDIA_MOUNT}"
 
-    # Step 2: initialize RetroMi/ subfolder if missing
+    # Step 2: initialize RetroMi/ subfolder if missing (background, low I/O priority)
     local retromi_usb="${MEDIA_MOUNT}/RetroMi"
     if [ ! -d "${retromi_usb}/roms" ]; then
-        ${log} "New drive — initializing RetroMi/ structure..."
-        for sys in "${ROM_DIRS[@]}"; do
-            mkdir -p "${retromi_usb}/roms/${sys}"
-        done
-        mkdir -p "${retromi_usb}/BIOS"
+        ${log} "New drive — initializing RetroMi/ structure in background..."
+        ionice -c 3 bash -c "
+            mkdir -p '${retromi_usb}/BIOS'
+            for sys in ${ROM_DIRS[*]}; do
+                mkdir -p '${retromi_usb}/roms/'\"\$sys\"
+            done
+        " &
         create_readme "${retromi_usb}"
-        chown -R pi:pi "${retromi_usb}" 2>/dev/null || true
-        ${log} "RetroMi/ structure initialized"
+        ${log} "RetroMi/ structure init started"
     fi
 
     # Step 3: bind-mount USB/RetroMi/ → /home/pi/RetroPie
