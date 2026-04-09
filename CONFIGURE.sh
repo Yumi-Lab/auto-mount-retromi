@@ -1,30 +1,38 @@
 #!/usr/bin/env bash
-# If you are executing this script in cron with a restricted environment,
-# modify the shebang to specify appropriate path; /bin/bash in most distros.
-# And, also if you aren't comfortable using(abuse?) env command.
-MOUNT_POINT="/home/pi/printer_data/gcodes/USB"
+# RetroMi — USB auto-mount installer
+# Run as root to install the USB auto-mount service.
+
+set -e
+
 PATH="$PATH:/usr/bin:/usr/local/bin:/usr/sbin:/usr/local/sbin:/bin:/sbin"
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "Error: run as root (sudo ./CONFIGURE.sh)"
+    exit 1
+fi
+
 chmod 755 ./*.sh
 
-cp ./usb-mount.sh /usr/local/bin/
+# Install mount script
+cp ./usb-mount.sh /usr/local/bin/usb-mount.sh
+chmod 755 /usr/local/bin/usb-mount.sh
 
-# Systemd unit file for USB automount/unmount 
+# Install systemd unit
 cp ./usb-mount@.service /etc/systemd/system/usb-mount@.service
 
-# Create udev rule to start/stop usb-mount@.service on hotplug/unplug
-cat ./99-local.rules.usb-mount >> /etc/udev/rules.d/99-local.rules
+# Install udev rule (append only if not already present)
+RULES_FILE="/etc/udev/rules.d/99-local.rules"
+if ! grep -q "usb-mount" "${RULES_FILE}" 2>/dev/null; then
+    cat ./99-local.rules.usb-mount >> "${RULES_FILE}"
+fi
 
+# Create mountpoint
+mkdir -p /home/pi/RetroPie
+chown pi:pi /home/pi/RetroPie
+
+# Reload systemd and udev
 systemctl daemon-reload
 udevadm control --reload-rules
 
-# Create folder mount point for klipper
-if [ ! -d "$MOUNT_POINT" ]; then
-    mkdir -p "$MOUNT_POINT"
-    if [ $? -eq 0 ]; then
-        echo "$(date): Dossier $MOUNT_POINT créé" >> "$LOG_FILE"
-        chmod 777 "$MOUNT_POINT"
-    else
-        echo "$(date): Erreur lors de la création du dossier $MOUNT_POINT" >> "$LOG_FILE"
-        exit 1
-    fi
-fi
+echo "RetroMi USB auto-mount installed."
+echo "Plug in a USB drive to test."

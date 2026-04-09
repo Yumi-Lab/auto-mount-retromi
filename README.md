@@ -1,36 +1,58 @@
-### Automount USB drives with systemd
+# auto-mount-retromi
 
-_This is a dirty solution; but works. A good approach would be to use 
-__libudev__._
+USB auto-mount service for [RetroMi](https://github.com/Yumi-Lab/RetroMi) — the Armbian-based retro gaming OS for SmartPi One.
 
-Mount point is /home/pi/RetroPie
+## What it does
+
+- Automatically mounts USB drives on `/home/pi/RetroPie` when plugged in
+- On first plug of a new drive: creates the full ROM folder structure and a bilingual (FR/EN) user README on the drive
+- Handles multi-partition USB drives (only first mountable partition is used)
+- Unmounts cleanly on unplug
+
+## How it works
+
+| Component | Role |
+|---|---|
+| `99-local.rules` | udev rule — triggers on USB block device plug/unplug |
+| `usb-mount@.service` | systemd oneshot — calls `usb-mount.sh` |
+| `usb-mount.sh` | mount/unmount logic + ROM structure initialization |
 
 ## Install
-```
-git clone https://github.com/Maxime3d77/auto-mount-retromi.git
+
+Installed automatically during the RetroMi image build. To install manually:
+
+```bash
+git clone https://github.com/Yumi-Lab/auto-mount-retromi.git
 cd auto-mount-retromi/
 sudo ./CONFIGURE.sh
 ```
 
-## Unintall
-```
+## Uninstall
+
+```bash
 sudo ./REMOVE.sh
 ```
 
-On inserting an USB drive, automounts the drive at /media/ as a
-directory named by device label; just the device name if label is
-empty: /media/usbtest, /media/sdd
+## ROM structure created on new drives
 
-Tracks the list of mounted drives in /var/log/usb-mount.track.
-
-Logs the actions in /var/log/messages with tag 'usb-mount.sh'
 ```
-cat /var/log/messages | grep usb-mount.sh
+/  (USB root = /home/pi/RetroPie)
+├── roms/
+│   ├── nes/
+│   ├── snes/
+│   ├── megadrive/
+│   ├── psx/
+│   └── ... (all supported systems)
+├── BIOS/
+└── RetroMi-README.md   ← bilingual user guide
 ```
 
-Please do not expect it to perfectly handle all your needs.
-Be warned, minimally tested; okay for temporary plug-ins but certainly
-not recommended for enclosures with longer TTL.
+## Logs
 
-**To setup, run `CONFIGURE.sh` with sudo or as root; `REMOVE.sh` to undo the
-setup.**
+```bash
+journalctl -t usb-mount
+# or
+grep usb-mount /var/log/messages
+```
+
+Mount tracking: `/var/log/usb-mount.track`

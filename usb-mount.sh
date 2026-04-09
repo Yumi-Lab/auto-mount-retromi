@@ -1,108 +1,248 @@
 #!/usr/bin/env bash
-# If you are executing this script in cron with a restricted environment,
-# modify the shebang to specify appropriate path; /bin/bash in most distros.
-# And, also if you aren't comfortable using(abuse?) env command.
-
-# This script is based on https://serverfault.com/a/767079 posted
-# by Mike Blackwell, modified to our needs. Credits to the author.
-
-# This script is called from systemd unit file to mount or unmount
-# a USB drive.
+# RetroMi — USB auto-mount
+#
+# Mounts USB drives on /home/pi/RetroPie.
+# On first plug of a new drive, initializes the RetroMi ROM folder structure
+# and drops a bilingual user README at the drive root.
+#
+# Called by systemd unit usb-mount@.service via udev rule 99-local.rules.
+# Logs to /var/log/messages (tag: usb-mount).
 
 PATH="$PATH:/usr/bin:/usr/local/bin:/usr/sbin:/usr/local/sbin:/bin:/sbin"
-log="logger -t usb-mount.sh -s "
+log="logger -t usb-mount -s"
 
-usage()
-{
-    ${log} "Usage: $0 {add|remove} device_name (e.g. sdb1)"
-    exit 1
-}
+MOUNT_POINT="/home/pi/RetroPie"
+TRACK_FILE="/var/log/usb-mount.track"
+
+# ROM directories — mirrors RetroMi supported systems
+ROM_DIRS=(
+    nes snes megadrive mastersystem gamegear sega32x segacd sg-1000
+    gb gbc gba nds n64
+    psx psp
+    atari2600 atari5200 atari7800 atarilynx atarist
+    pcengine ngp ngpc wonderswan wonderswancolor
+    arcade fba mame-libretro neogeo
+    scummvm dosbox
+    c64 msx zxspectrum amstradcpc amiga
+    dreamcast saturn 3do jaguar
+    vectrex coleco intellivision
+    ports
+)
 
 if [[ $# -ne 2 ]]; then
-    usage
+    ${log} "Usage: $0 {add|remove} device_name (e.g. sda1)"
+    exit 1
 fi
 
 ACTION=$1
 DEVBASE=$2
 DEVICE="/dev/${DEVBASE}"
 
-# See if this drive is already mounted, and if so where
-MOUNT_POINT=$(mount | grep ${DEVICE} | awk '{ print $3 }')
+create_readme() {
+    local base="$1"
+    cat > "${base}/RetroMi-README.md" << 'EOF'
+# RetroMi — USB ROMs Drive / Clé USB ROMs
 
-DEV_LABEL=""
+---
 
-do_mount()
-{
-    if [[ -n ${MOUNT_POINT} ]]; then
-        ${log} "Warning: ${DEVICE} is already mounted at ${MOUNT_POINT}"
-        exit 1
+## 🇫🇷 Français
+
+### Bienvenue sur votre clé USB RetroMi !
+
+Cette clé est reconnue automatiquement par RetroMi au branchement.
+Les dossiers de ROMs ont été créés automatiquement.
+
+### Comment ajouter des jeux
+
+Copiez vos ROMs dans le dossier correspondant à la console :
+
+| Dossier                | Console                     |
+|------------------------|-----------------------------|
+| `roms/nes/`            | Nintendo NES                |
+| `roms/snes/`           | Super Nintendo              |
+| `roms/megadrive/`      | Sega Mega Drive / Genesis   |
+| `roms/mastersystem/`   | Sega Master System          |
+| `roms/gb/`             | Game Boy                    |
+| `roms/gbc/`            | Game Boy Color              |
+| `roms/gba/`            | Game Boy Advance            |
+| `roms/n64/`            | Nintendo 64                 |
+| `roms/psx/`            | PlayStation 1               |
+| `roms/psp/`            | PlayStation Portable        |
+| `roms/arcade/`         | Arcade (FBNeo / MAME)       |
+| `roms/neogeo/`         | Neo Geo                     |
+| `roms/dreamcast/`      | Sega Dreamcast              |
+| `roms/scummvm/`        | ScummVM (aventure PC)       |
+| `roms/dosbox/`         | DOS (DOSBox)                |
+| `roms/ports/`          | Ports (Doom, Quake…)        |
+
+### Fichiers BIOS
+
+Certains émulateurs nécessitent des fichiers BIOS dans le dossier `BIOS/` :
+
+| Fichier           | Console          |
+|-------------------|------------------|
+| `scph1001.bin`    | PlayStation 1    |
+| `dc_boot.bin`     | Sega Dreamcast   |
+| `neogeo.zip`      | Neo Geo          |
+| `gba_bios.bin`    | Game Boy Advance |
+
+### Formats supportés (principaux)
+
+| Console    | Extensions                        |
+|------------|-----------------------------------|
+| NES        | `.nes`                            |
+| SNES       | `.sfc`, `.smc`                    |
+| Mega Drive | `.md`, `.bin`, `.gen`             |
+| GBA        | `.gba`                            |
+| N64        | `.z64`, `.n64`, `.v64`            |
+| PSX        | `.bin`+`.cue`, `.pbp`, `.chd`    |
+| Arcade     | `.zip` (romset FBNeo ou MAME 0.78)|
+
+### Débranchement sécurisé
+
+Évitez de retirer la clé pendant qu'un jeu est en cours.
+Éteignez la console depuis EmulationStation ou via le menu RetroPie.
+
+---
+
+## 🇬🇧 English
+
+### Welcome to your RetroMi USB drive!
+
+This drive is automatically detected by RetroMi when plugged in.
+ROM folders have been created automatically.
+
+### How to add games
+
+Copy your ROMs into the folder matching the console:
+
+| Folder                 | Console                     |
+|------------------------|-----------------------------|
+| `roms/nes/`            | Nintendo NES                |
+| `roms/snes/`           | Super Nintendo              |
+| `roms/megadrive/`      | Sega Mega Drive / Genesis   |
+| `roms/mastersystem/`   | Sega Master System          |
+| `roms/gb/`             | Game Boy                    |
+| `roms/gbc/`            | Game Boy Color              |
+| `roms/gba/`            | Game Boy Advance            |
+| `roms/n64/`            | Nintendo 64                 |
+| `roms/psx/`            | PlayStation 1               |
+| `roms/psp/`            | PlayStation Portable        |
+| `roms/arcade/`         | Arcade (FBNeo / MAME)       |
+| `roms/neogeo/`         | Neo Geo                     |
+| `roms/dreamcast/`      | Sega Dreamcast              |
+| `roms/scummvm/`        | ScummVM (PC adventure games)|
+| `roms/dosbox/`         | DOS games (DOSBox)          |
+| `roms/ports/`          | Ports (Doom, Quake…)        |
+
+### BIOS files
+
+Some emulators require BIOS files placed in the `BIOS/` folder:
+
+| File              | Console          |
+|-------------------|------------------|
+| `scph1001.bin`    | PlayStation 1    |
+| `dc_boot.bin`     | Sega Dreamcast   |
+| `neogeo.zip`      | Neo Geo          |
+| `gba_bios.bin`    | Game Boy Advance |
+
+### Supported formats (main)
+
+| Console    | Extensions                        |
+|------------|-----------------------------------|
+| NES        | `.nes`                            |
+| SNES       | `.sfc`, `.smc`                    |
+| Mega Drive | `.md`, `.bin`, `.gen`             |
+| GBA        | `.gba`                            |
+| N64        | `.z64`, `.n64`, `.v64`            |
+| PSX        | `.bin`+`.cue`, `.pbp`, `.chd`    |
+| Arcade     | `.zip` (FBNeo or MAME 0.78 romset)|
+
+### Safe removal
+
+Avoid unplugging the drive while a game is running.
+Power off from EmulationStation or the RetroPie menu.
+
+---
+RetroMi — https://github.com/Yumi-Lab/RetroMi
+EOF
+}
+
+do_mount() {
+    # Guard: device already mounted
+    if mount | grep -q "^${DEVICE} "; then
+        ${log} "Warning: ${DEVICE} is already mounted, skipping"
+        exit 0
     fi
 
-    # Get info for this drive: $ID_FS_LABEL and $ID_FS_TYPE
-    eval $(blkid -o udev ${DEVICE} | grep -i -e "ID_FS_LABEL" -e "ID_FS_TYPE")
-
-    # Figure out a mount point to use
-    LABEL=${ID_FS_LABEL}
-    if grep -q " /media/${LABEL} " /etc/mtab; then
-        # Already in use, make a unique one
-        LABEL+="-${DEVBASE}"
-    fi
-    DEV_LABEL="${LABEL}"
-
-    # Use the device name in case the drive doesn't have label
-    if [ -z ${DEV_LABEL} ]; then
-        DEV_LABEL="${DEVBASE}"
+    # Guard: mountpoint already in use (multi-partition USB)
+    if mount | grep -q " ${MOUNT_POINT} "; then
+        ${log} "Info: ${MOUNT_POINT} already in use, skipping ${DEVICE}"
+        exit 0
     fi
 
-    #MOUNT_POINT="/media/${DEV_LABEL}"
-    MOUNT_POINT="/home/pi/RetroPie"
+    # Get filesystem info
+    eval "$(blkid -o udev "${DEVICE}" | grep -iE "ID_FS_LABEL|ID_FS_TYPE")"
 
-    ${log} "Mount point: ${MOUNT_POINT}"
+    # Skip unsupported or unrecognized filesystems
+    case "${ID_FS_TYPE}" in
+        vfat|exfat|ext2|ext3|ext4) ;;
+        *)
+            ${log} "Unsupported filesystem '${ID_FS_TYPE}' on ${DEVICE}, skipping"
+            exit 0
+            ;;
+    esac
 
-    mkdir -p ${MOUNT_POINT}
+    mkdir -p "${MOUNT_POINT}"
 
-    # Global mount options
     OPTS="rw,relatime"
-
-    # File system type specific mount options
-    if [[ ${ID_FS_TYPE} == "vfat" ]]; then
+    if [[ "${ID_FS_TYPE}" == "vfat" ]]; then
         OPTS+=",users,gid=100,umask=000,shortname=mixed,utf8=1,flush"
     fi
 
-    if ! mount -o ${OPTS} ${DEVICE} ${MOUNT_POINT}; then
-        ${log} "Error mounting ${DEVICE} (status = $?)"
-        rmdir "${MOUNT_POINT}"
+    if ! mount -o "${OPTS}" "${DEVICE}" "${MOUNT_POINT}"; then
+        ${log} "Error mounting ${DEVICE} (status=$?)"
         exit 1
-    else
-        # Track the mounted drives
-        echo "${MOUNT_POINT}:${DEVBASE}" | cat >> "/var/log/usb-mount.track" 
     fi
 
-    ${log} "Mounted ${DEVICE} at ${MOUNT_POINT}"
+    echo "${MOUNT_POINT}:${DEVBASE}" >> "${TRACK_FILE}"
+    ${log} "Mounted ${DEVICE} (${ID_FS_TYPE}) at ${MOUNT_POINT}"
+
+    # First-time initialization: create ROM structure if missing
+    if [ ! -d "${MOUNT_POINT}/roms" ]; then
+        ${log} "New drive — initializing RetroMi ROM structure..."
+
+        for sys in "${ROM_DIRS[@]}"; do
+            mkdir -p "${MOUNT_POINT}/roms/${sys}"
+        done
+
+        mkdir -p "${MOUNT_POINT}/BIOS"
+        create_readme "${MOUNT_POINT}"
+        chown -R pi:pi "${MOUNT_POINT}" 2>/dev/null || true
+
+        ${log} "ROM structure initialized on ${DEVICE}"
+    fi
 }
 
-do_unmount()
-{
-    if [[ -z ${MOUNT_POINT} ]]; then
+do_unmount() {
+    local current_mount
+    current_mount=$(mount | grep "^${DEVICE} " | awk '{print $3}')
+
+    if [[ -z "${current_mount}" ]]; then
         ${log} "Warning: ${DEVICE} is not mounted"
-    else
-        umount -l ${DEVICE}
-	${log} "Unmounted ${DEVICE} from ${MOUNT_POINT}"
-        /bin/rmdir "${MOUNT_POINT}"
-        sed -i.bak "\@${MOUNT_POINT}@d" /var/log/usb-mount.track
+        exit 0
     fi
 
-
+    umount -l "${DEVICE}"
+    ${log} "Unmounted ${DEVICE} from ${current_mount}"
+    sed -i.bak "\\@${current_mount}@d" "${TRACK_FILE}" 2>/dev/null || true
 }
 
 case "${ACTION}" in
-    add)
-        do_mount
-        ;;
-    remove)
-        do_unmount
-        ;;
+    add)    do_mount ;;
+    remove) do_unmount ;;
     *)
-        usage
+        ${log} "Unknown action '${ACTION}'"
+        exit 1
         ;;
 esac
