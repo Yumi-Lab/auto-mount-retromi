@@ -218,7 +218,12 @@ do_mount() {
 
     # Step 2: initialize RetroMi/ subfolder if missing (background, low I/O priority)
     local retromi_usb="${MEDIA_MOUNT}/RetroMi"
-    if [ ! -d "${retromi_usb}/roms" ]; then
+    local is_ro=false
+    if mount | grep "${MEDIA_MOUNT}" | grep -q "\bro\b"; then
+        is_ro=true
+        ${log} "Drive is read-only — skipping structure init"
+    fi
+    if [ "${is_ro}" = false ] && [ ! -d "${retromi_usb}/roms" ]; then
         ${log} "New drive — initializing RetroMi/ structure in background..."
         ionice -c 3 bash -c "
             mkdir -p '${retromi_usb}/BIOS'
@@ -231,6 +236,10 @@ do_mount() {
     fi
 
     # Step 3: bind-mount USB/RetroMi/ → /home/pi/RetroPie
+    if [ ! -d "${retromi_usb}" ]; then
+        ${log} "No RetroMi/ on drive — skipping"
+        exit 0
+    fi
     mkdir -p "${RETROPI_DIR}"
     if ! mount --bind "${retromi_usb}" "${RETROPI_DIR}"; then
         ${log} "Error bind-mounting ${retromi_usb} → ${RETROPI_DIR}"
@@ -240,11 +249,24 @@ do_mount() {
     fi
     ${log} "Bind-mounted ${retromi_usb} → ${RETROPI_DIR}"
 
+    # Step 4: restore retropiemenu from SD (system scripts, not user data)
+    if [ -d "/opt/retropie/retropiemenu" ]; then
+        mkdir -p "${RETROPI_DIR}/retropiemenu"
+        mount --bind /opt/retropie/retropiemenu "${RETROPI_DIR}/retropiemenu"
+        ${log} "retropiemenu bind-mounted from SD"
+    fi
+
     echo "${MEDIA_MOUNT}:${DEVBASE}" >> "${TRACK_FILE}"
 }
 
 do_unmount() {
-    # Unbind /home/pi/RetroPie first
+    # Unbind retropiemenu first (nested mount)
+    if mount | grep -q "${RETROPI_DIR}/retropiemenu"; then
+        umount -l "${RETROPI_DIR}/retropiemenu"
+        ${log} "Unbound retropiemenu"
+    fi
+
+    # Unbind /home/pi/RetroPie
     if mount | grep -q " ${RETROPI_DIR} "; then
         umount -l "${RETROPI_DIR}"
         ${log} "Unbound ${RETROPI_DIR}"
